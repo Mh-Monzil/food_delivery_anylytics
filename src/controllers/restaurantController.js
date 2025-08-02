@@ -116,6 +116,79 @@ class RestaurantController {
       });
     }
   }
+
+  // NEW: Simple view example - Restaurant performance
+  async getRestaurantPerformance(req, res) {
+    try {
+      const query = `
+        SELECT 
+          r.restaurant_id,
+          r.name,
+          r.cuisine_type,
+          r.rating,
+          COUNT(o.order_id) as total_orders,
+          SUM(CASE WHEN o.order_status = 'delivered' THEN o.final_amount ELSE 0 END) as total_revenue,
+          AVG(CASE WHEN o.order_status = 'delivered' THEN o.final_amount END) as avg_order_value,
+          AVG(o.customer_rating) as avg_customer_rating
+        FROM restaurants r
+        LEFT JOIN orders o ON r.restaurant_id = o.restaurant_id
+        WHERE r.is_active = TRUE
+        GROUP BY r.restaurant_id, r.name, r.cuisine_type, r.rating
+        ORDER BY total_revenue DESC
+      `;
+      const performance = await db.query(query);
+
+      res.json({
+        success: true,
+        data: performance,
+        message: 'Restaurant performance summary'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  // NEW: Simple function example - Calculate commission  
+  async calculateCommission(req, res) {
+    try {
+      const { id } = req.params;
+      const { commission_rate = 15 } = req.body; // Default 15%
+      
+      const query = `
+        SELECT 
+          r.name,
+          COUNT(o.order_id) as total_orders,
+          SUM(CASE WHEN o.order_status = 'delivered' THEN o.final_amount ELSE 0 END) as total_revenue,
+          SUM(CASE WHEN o.order_status = 'delivered' THEN o.final_amount ELSE 0 END) * (? / 100) as commission_amount
+        FROM restaurants r
+        LEFT JOIN orders o ON r.restaurant_id = o.restaurant_id
+        WHERE r.restaurant_id = ?
+        GROUP BY r.restaurant_id, r.name
+      `;
+      const result = await db.query(query, [commission_rate, id]);
+
+      if (result.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Restaurant not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result[0],
+        message: `Commission calculated at ${commission_rate}%`
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
 }
 
 export default new RestaurantController();

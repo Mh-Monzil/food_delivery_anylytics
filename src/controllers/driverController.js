@@ -166,6 +166,74 @@ class DriverController {
       });
     }
   }
+
+  // NEW: Simple view example - Driver performance summary  
+  async getDriverPerformance(req, res) {
+    try {
+      const query = `
+        SELECT 
+          dd.driver_id,
+          dd.name,
+          dd.vehicle_type,
+          dd.rating,
+          COUNT(o.order_id) as total_deliveries,
+          AVG(o.customer_rating) as avg_customer_rating,
+          SUM(o.delivery_fee) * 0.8 as estimated_earnings
+        FROM delivery_drivers dd
+        LEFT JOIN orders o ON dd.driver_id = o.driver_id AND o.order_status = 'delivered'
+        GROUP BY dd.driver_id, dd.name, dd.vehicle_type, dd.rating
+        ORDER BY total_deliveries DESC
+      `;
+      const performance = await db.query(query);
+
+      res.json({
+        success: true,
+        data: performance,
+        message: 'Driver performance summary'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  // NEW: Simple procedure example - Find best drivers for zone
+  async getBestDriversForZone(req, res) {
+    try {
+      const { zoneId } = req.params;
+      const query = `
+        SELECT 
+          dd.driver_id,
+          dd.name,
+          dd.rating,
+          COUNT(o.order_id) as zone_deliveries,
+          AVG(o.customer_rating) as avg_customer_rating
+        FROM delivery_drivers dd
+        LEFT JOIN orders o ON dd.driver_id = o.driver_id 
+          AND o.zone_id = ? 
+          AND o.order_status = 'delivered'
+        WHERE dd.is_active = TRUE
+        GROUP BY dd.driver_id, dd.name, dd.rating
+        HAVING zone_deliveries > 0
+        ORDER BY dd.rating DESC, avg_customer_rating DESC
+        LIMIT 5
+      `;
+      const bestDrivers = await db.query(query, [zoneId]);
+
+      res.json({
+        success: true,
+        data: bestDrivers,
+        message: `Top 5 drivers for zone ${zoneId}`
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
 }
 
 export default new DriverController();

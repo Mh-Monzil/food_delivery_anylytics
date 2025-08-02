@@ -207,6 +207,72 @@ class OrderController {
       });
     }
   }
+
+  // NEW: Simple view example - Daily sales summary
+  async getDailySales(req, res) {
+    try {
+      const query = `
+        SELECT 
+          DATE(order_placed_at) as order_date,
+          COUNT(*) as total_orders,
+          SUM(CASE WHEN order_status = 'delivered' THEN final_amount ELSE 0 END) as total_revenue,
+          COUNT(CASE WHEN order_status = 'delivered' THEN 1 END) as delivered_orders,
+          COUNT(CASE WHEN order_status = 'cancelled' THEN 1 END) as cancelled_orders
+        FROM orders 
+        WHERE order_placed_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+        GROUP BY DATE(order_placed_at)
+        ORDER BY order_date DESC
+      `;
+      const dailySales = await db.query(query);
+
+      res.json({
+        success: true,
+        data: dailySales,
+        message: 'Daily sales summary for last 7 days'
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  // NEW: Simple trigger example - Update order status (triggers will run automatically)
+  async completeOrder(req, res) {
+    try {
+      const { id } = req.params;
+      
+      // This update will trigger automatic updates to customer stats
+      const query = `
+        UPDATE orders 
+        SET 
+          order_status = 'delivered',
+          actual_delivery_time = NOW()
+        WHERE order_id = ? AND order_status != 'delivered'
+      `;
+      
+      const result = await db.query(query, [id]);
+      
+      if (result.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Order not found or already completed'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Order completed - customer stats updated automatically by triggers',
+        data: { order_id: id, status: 'delivered' }
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
 }
 
 export default new OrderController();

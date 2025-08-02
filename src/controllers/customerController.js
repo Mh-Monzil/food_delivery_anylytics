@@ -105,6 +105,71 @@ class CustomerController {
             });
         }
     }
+
+    // NEW: Simple view example - Customer summary
+    async getCustomerSummary(req, res) {
+        try {
+            const query = `
+                SELECT 
+                    customer_id,
+                    name,
+                    total_orders,
+                    total_spent,
+                    CASE 
+                        WHEN total_orders >= 20 THEN 'VIP'
+                        WHEN total_orders >= 10 THEN 'Premium'
+                        WHEN total_orders >= 5 THEN 'Regular'
+                        ELSE 'New'
+                    END as customer_tier
+                FROM customers 
+                ORDER BY total_spent DESC
+            `;
+            const customers = await db.query(query);
+            
+            res.json({
+                success: true,
+                data: customers,
+                message: 'Customer summary with tiers'
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
+
+    // NEW: Simple procedure example - Get customer order history
+    async getCustomerOrderHistory(req, res) {
+        try {
+            const { id } = req.params;
+            const query = `
+                SELECT 
+                    o.order_id,
+                    r.name as restaurant_name,
+                    o.final_amount,
+                    o.order_status,
+                    o.order_placed_at
+                FROM orders o
+                JOIN restaurants r ON o.restaurant_id = r.restaurant_id
+                WHERE o.customer_id = ?
+                ORDER BY o.order_placed_at DESC
+                LIMIT 10
+            `;
+            const orders = await db.query(query, [id]);
+            
+            res.json({
+                success: true,
+                data: orders,
+                message: `Order history for customer ${id}`
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                message: error.message
+            });
+        }
+    }
 }
 
 export default new CustomerController();
