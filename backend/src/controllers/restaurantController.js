@@ -1,7 +1,6 @@
 import db from '../config/database.js';
 
 class RestaurantController {
-  // 1. GET all restaurants
   async getAllRestaurants(req, res) {
     try {
       const query = `
@@ -34,7 +33,6 @@ class RestaurantController {
     }
   }
 
-  // 2. GET restaurant by ID
   async getRestaurantById(req, res) {
     try {
       const { id } = req.params;
@@ -63,7 +61,6 @@ class RestaurantController {
     }
   }
 
-  // 3. CREATE new restaurant
   async createRestaurant(req, res) {
     try {
       const { name, cuisine_type, address, phone, email } = req.body;
@@ -86,7 +83,6 @@ class RestaurantController {
     }
   }
 
-  // 4. Restaurant orders - Simple JOIN
   async getRestaurantOrders(req, res) {
     try {
       const { id } = req.params;
@@ -117,7 +113,6 @@ class RestaurantController {
     }
   }
 
-  // NEW: Simple view example - Restaurant performance
   async getRestaurantPerformance(req, res) {
     try {
       const query = `
@@ -151,36 +146,83 @@ class RestaurantController {
     }
   }
 
-  // NEW: Simple function example - Calculate commission  
-  async calculateCommission(req, res) {
+  async deleteRestaurant(req, res) {
     try {
       const { id } = req.params;
-      const { commission_rate = 15 } = req.body; // Default 15%
-      
+
+      // Start transaction to handle restaurant deactivation and order cancellation
+      const conn = await db.getConnection();
+      await conn.beginTransaction();
+
+      try {
+        // Check if restaurant exists and is active
+        const [restaurant] = await conn.execute(
+          'SELECT is_active FROM restaurants WHERE restaurant_id = ? FOR UPDATE',
+          [id]
+        );
+
+        if (restaurant.length === 0 || restaurant[0].is_active === 0) {
+          await conn.rollback();
+          conn.release();
+          return res.status(404).json({
+            success: false,
+            message: 'Restaurant not found or already inactive'
+          });
+        }
+
+        // Cancel all pending/preparing orders for this restaurant
+        const [cancelOrdersResult] = await conn.execute(
+          `UPDATE orders 
+            SET order_status = 'cancelled' 
+            WHERE restaurant_id = ? 
+            AND order_status IN ('pending', 'confirmed', 'preparing', 'ready')`,
+          [id]
+        );
+
+        // Soft delete: set is_active = 0
+        await conn.execute(
+          'UPDATE restaurants SET is_active = 0 WHERE restaurant_id = ?',
+          [id]
+        );
+
+        await conn.commit();
+        conn.release();
+
+        res.json({
+          success: true,
+          message: 'Restaurant deactivated successfully',
+          data: {
+            restaurant_id: Number(id),
+            cancelled_orders: cancelOrdersResult.affectedRows
+          }
+        });
+      } catch (error) {
+        await conn.rollback();
+        conn.release();
+        throw error;
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  async getDeletedRestaurants(req, res) {
+    try {
       const query = `
         SELECT 
-          r.name,
-          COUNT(o.order_id) as total_orders,
-          SUM(CASE WHEN o.order_status = 'delivered' THEN o.final_amount ELSE 0 END) as total_revenue,
-          SUM(CASE WHEN o.order_status = 'delivered' THEN o.final_amount ELSE 0 END) * (? / 100) as commission_amount
-        FROM restaurants r
-        LEFT JOIN orders o ON r.restaurant_id = o.restaurant_id
-        WHERE r.restaurant_id = ?
-        GROUP BY r.restaurant_id, r.name
+          *
+        FROM deleted_restaurants
+        ORDER BY deleted_at DESC
       `;
-      const result = await db.query(query, [commission_rate, id]);
 
-      if (result.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: 'Restaurant not found'
-        });
-      }
+      const deletedRestaurants = await db.query(query);
 
       res.json({
         success: true,
-        data: result[0],
-        message: `Commission calculated at ${commission_rate}%`
+        data: deletedRestaurants
       });
     } catch (error) {
       res.status(500).json({

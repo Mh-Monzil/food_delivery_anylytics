@@ -75,6 +75,27 @@ class OrderController {
   async createOrder(req, res) {
     try {
       const { customer_id, restaurant_id, total_amount, delivery_fee } = req.body;
+
+      // Check if restaurant is active before creating order
+      const restaurantCheck = await db.query(
+        'SELECT is_active FROM restaurants WHERE restaurant_id = ?',
+        [restaurant_id]
+      );
+
+      if (restaurantCheck.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Restaurant not found'
+        });
+      }
+
+      if (restaurantCheck[0].is_active === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot place order: restaurant is currently inactive'
+        });
+      }
+
       const final_amount = total_amount + delivery_fee;
 
       const query = `
@@ -242,7 +263,7 @@ class OrderController {
   async completeOrder(req, res) {
     try {
       const { id } = req.params;
-      
+
       // This update will trigger automatic updates to customer stats
       const query = `
         UPDATE orders 
@@ -251,9 +272,9 @@ class OrderController {
           actual_delivery_time = NOW()
         WHERE order_id = ? AND order_status != 'delivered'
       `;
-      
+
       const result = await db.query(query, [id]);
-      
+
       if (result.affectedRows === 0) {
         return res.status(404).json({
           success: false,

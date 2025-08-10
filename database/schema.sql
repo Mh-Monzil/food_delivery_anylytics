@@ -161,3 +161,29 @@ FROM delivery_drivers dd
 LEFT JOIN orders o ON dd.driver_id = o.driver_id AND o.order_status = 'delivered'
 LEFT JOIN driver_shifts ds ON dd.driver_id = ds.driver_id
 GROUP BY dd.driver_id, dd.name, dd.vehicle_type, dd.rating;
+
+
+CREATE TABLE deleted_restaurants (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    restaurant_id INT,
+    name VARCHAR(255),
+    cuisine_type VARCHAR(255),
+    address TEXT,
+    phone VARCHAR(50),
+    email VARCHAR(255),
+    rating DECIMAL(3,2),
+    total_reviews INT,
+    is_active BOOLEAN,
+    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trigger to log soft deleted restaurants (on is_active update)
+DROP TRIGGER IF EXISTS after_restaurant_soft_delete;
+CREATE TRIGGER after_restaurant_soft_delete
+AFTER UPDATE ON restaurants
+FOR EACH ROW
+INSERT INTO deleted_restaurants (
+  restaurant_id, name, cuisine_type, address, phone, email, rating, total_reviews, is_active
+) VALUES (
+  OLD.restaurant_id, OLD.name, OLD.cuisine_type, OLD.address, OLD.phone, OLD.email, OLD.rating, OLD.total_reviews, NEW.is_active
+);
